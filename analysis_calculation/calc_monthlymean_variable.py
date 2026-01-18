@@ -38,7 +38,7 @@ experiments = [ 'PIRE',
                 'PIRE_PLUS_4K',
                 'PIRE_PLUS_4K_CO2_1270ppmv']
 
-# process U200 or other variables
+# process U200 needed by the manuscript (or other variables)
 var_names = ['u',]
 levels = ['200',]
 

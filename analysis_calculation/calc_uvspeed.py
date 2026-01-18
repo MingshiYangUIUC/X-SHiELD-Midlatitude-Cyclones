@@ -21,6 +21,7 @@ from tqdm import tqdm
 from metpy.units import units
 import os
 
+# input and output dirs will be the same
 composite_dir = '/glade/work/mingshiy/XSHIELD/data/Composites'
 
 experiments = [ 'PIRE',

@@ -24,22 +24,23 @@ from tqdm import tqdm
 from scipy.stats import ttest_ind, mannwhitneyu # or other tests
 
 # input and output directory
+# must check these paths when reproducing composite analysis
 composite_dir = '/glade/work/mingshiy/XSHIELD/data/Composites'
 composite_derived_dir = '/glade/work/mingshiy/XSHIELD/data/Composites_derived'
-
+track_dir = '/glade/work/mingshiy/XSHIELD/tracks'
 
 experiments = [ 'PIRE',
                 'PIRE_CO2_1270ppmv',
                 'PIRE_PLUS_4K',
                 'PIRE_PLUS_4K_CO2_1270ppmv']
 
-# (a) for derived variables, omit levels, use custom variable name
+# (a) for derived variables, can set levels to [''] and use custom variable name
 var_name = 'stability-thetae-200925'
 #var_name = 'PRATEsfc'
 var_name = 'uv925'
 levels = ['']
 
-# (b) or define regular variable names and levels, 
+# (b) or regular definition: variable names and levels, 
 #var_name = 'rh'
 #levels = [1000,925,850,700,500,200,50]
 
@@ -49,15 +50,15 @@ test = ttest_ind
 tk = []
 idx = []
 for exp in experiments: # load track and indices
-    tk.append(np.loadtxt(f'/glade/work/mingshiy/XSHIELD/tracks/TK2Y-{exp}/All_Tracks.txt'))
-    idx.append(np.loadtxt(f'/glade/work/mingshiy/XSHIELD/tracks/TK2Y-{exp}/All_Indexes.txt'))
+    tk.append(np.loadtxt(f'{track_dir}/TK2Y-{exp}/All_Tracks.txt'))
+    idx.append(np.loadtxt(f'{track_dir}/TK2Y-{exp}/All_Indexes.txt'))
 
-Y, X = 201,201
+Y, X = 201,201 # horizontal storm centered grid
 
 for level in levels:
 
-    mean_data = []
-    p_data = []
+    mean_data = [] # 4 exps, Y, X
+    p_data = [] # 3 exps (all except CTRL), Y, X
 
     for i,exp in enumerate(experiments):
         print(level, exp)
@@ -70,7 +71,7 @@ for level in levels:
             print(data_ctrl.shape)
             mean_data.append(np.nanmean(data_ctrl,axis=0))
         else:
-            # sensitivity experiments: get composite mean and conduct statistical test
+            # sensitivity experiments: get composite mean and conduct statistical test with CTRL and get p value
             d = tk[i]
             sel = np.array((d[:,0]>2020000000)&(d[:,0]<2022000000)&(d[:,1]<65)&(d[:,1]>=30))
             data_test = np.load(f'{composite_dir}/TK2Y-{exp}_{var_name}{level}.npy')[sel].astype(np.float32)

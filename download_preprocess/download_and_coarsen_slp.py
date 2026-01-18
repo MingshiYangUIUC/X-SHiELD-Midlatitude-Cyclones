@@ -29,6 +29,8 @@ import os
 import subprocess
 import requests
 
+# because host files may cover different number of days, we try every day by checking
+# whether a file exist in that day, and download all existing files
 def is_valid_url(url):
     try:
         response = requests.head(url)
@@ -41,6 +43,10 @@ def is_valid_url(url):
         print(f"Error checking URL: {e}")
         return False
 
+# set where to store data (large disk)
+outdir = '/glade/work/mingshiy/XSHIELD/data'
+os.makedirs(outdir, exist_ok=True)
+
 # all dates
 dates = pd.date_range('2019-10-20T00','2022-01-12T00',freq='1d')
 date_str = [d.strftime('%Y%m%d%H') for d in dates]
@@ -50,11 +56,6 @@ experiments = [ 'PIRE',
                 'PIRE_CO2_1270ppmv',
                 'PIRE_PLUS_4K',
                 'PIRE_PLUS_4K_CO2_1270ppmv']
-
-# set where to store data (large disk)
-outdir = '/glade/work/mingshiy/XSHIELD/data'
-os.makedirs(outdir, exist_ok=True)
-
 
 # download the file by looping through all experiments and dates
 for exp in experiments[:]:

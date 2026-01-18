@@ -19,6 +19,7 @@ from tqdm import tqdm
 import os
 import gc
 
+# input and output dirs will be the same
 composite_dir = '/glade/work/mingshiy/XSHIELD/data/Composites'
 
 experiments = [ 'PIRE',

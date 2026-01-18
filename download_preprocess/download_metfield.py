@@ -28,6 +28,8 @@ import os
 import subprocess
 import requests
 
+# because host files may cover different number of days, we try every day by checking
+# whether a file exist in that day, and download all existing files
 def is_valid_url(url):
     try:
         response = requests.head(url)
@@ -40,6 +42,10 @@ def is_valid_url(url):
         print(f"Error checking URL: {e}")
         return False
 
+# set where to store data (large disk)
+outdir = '/glade/work/mingshiy/XSHIELD/data/metfields'
+os.makedirs(outdir, exist_ok=True)
+
 # all dates
 dates = pd.date_range('2019-10-20T00','2022-01-12T00',freq='1d')
 date_str = [d.strftime('%Y%m%d%H') for d in dates]
@@ -50,16 +56,12 @@ experiments = [ 'PIRE',
                 'PIRE_PLUS_4K',
                 'PIRE_PLUS_4K_CO2_1270ppmv']
 
-# set where to store data (large disk)
-outdir = '/glade/work/mingshiy/XSHIELD/data/metfields'
-os.makedirs(outdir, exist_ok=True)
-
 # please consult description of data in X-SHiELD storage website
 variables = ['omg','t','q', 'z','vort'] # a list of variable names
 levels = ['1000','925','850','700','500','200','50'] # a list of pressure levels or "sfc" for surface variables
 
 
-# download the file by looping through all levels, experiments, and dates
+# download the file by looping through all levels, experiments, dates, and variables
 for plevel in levels:
     for exp in experiments[:]:
         if not os.path.isdir(os.path.join(outdir,f'{exp}')):

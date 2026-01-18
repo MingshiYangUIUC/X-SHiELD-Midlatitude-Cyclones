@@ -31,6 +31,7 @@ import gc
 # input and output directory
 metfield_dir = '/glade/work/mingshiy/XSHIELD/data/metfields'
 composite_dir = '/glade/work/mingshiy/XSHIELD/data/Composites'
+track_dir = '/glade/work/mingshiy/XSHIELD/tracks'
 
 # these dates are used to identify and find downloaded files
 dates_coarse = pd.date_range('2019-10-20T00','2021-01-12T00',freq='5d')
@@ -54,6 +55,7 @@ def sqr_reshape(data): # reshape so that data is standard N-S/W-E dimension simi
 
 # bilinear interpolation as weighted average of four neighbouring points
 # this function computes weights given the target grid
+# method: https://en.wikipedia.org/wiki/Bilinear_interpolation
 def get_weight_idx_from_grid_bi_evengrid025(centered_grid):
     L = len(centered_grid)
 
@@ -96,37 +98,35 @@ def find_filedate(exp,var_name,level,d_str): # return date of the correct file
         #print(newdstr)
         return newdstr
 
-
+# multiprocessing worker (process a segment of full list)
 def worker_func(ilist):
-    #print(ilist)
-    #quit()
+
     result_chunk = []
     for i in ilist:
-
+        # get storm center
         center_lat = Lats[np.argmin((Lats-TK[i][1])**2)]
         center_lon = Lons[np.argmin((Lons-TK[i][2]%360)**2)]
         
+        # create storm centered grid
         lons,lats,grid = cg.get_centered_lonlat(center_lon,center_lat,2500,25,True,'new',0)
         latmin,latmax = np.floor(np.min(lats))-0.125,min(np.ceil(np.max(lats))+0.125,89.875)
 
         timestep = str(np.int64(TK[i][0]))
 
+        # only select and use latitude range needed to speedup
         var_itp = var.sel(time=f'{timestep[0:4]}-{timestep[4:6]}-{timestep[6:8]}T{timestep[8:10]}',grid_yt_coarse=slice(latmin,latmax)).values[0,::-1] # y top down
-
         latshift = np.int16((89.875-latmax)/0.25)
-        
         w11,w12,w21,w22,ix1,ix2,iy1,iy2 = get_weight_idx_from_grid_bi_evengrid025(grid)
-
         iy1 -= latshift
         iy2 -= latshift
 
+        # interpolate to square grid
         center_data_var = cg.get_centered_data_with_weight(var_itp,w11,w12,w21,w22,ix1,ix2,iy1,iy2)
-
         var_out = sqr_reshape(center_data_var).astype(np.float32)
 
+        # progress and memory monitor
         mem = psutil.virtual_memory()
 
-        # progress and memory monitor
         percentage = int(round((i-ilist[0])*100/len(ilist)))
         print('-'*percentage+'_'*(100-percentage)+f' {round(mem.available/1024**3,2)}G     ',end='\r')
         result_chunk.append(var_out)
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     for exp in experiments[:]:
         print(exp)
  
-        # define levels and variables that need process
+        # define levels and variables that need processing
         levels = ['1000','925','850','700','500','200','50']
         var_names = ['q','t','omg']
 
@@ -156,7 +156,7 @@ if __name__ == "__main__":
                 continue
             
             # load the track
-            TK = np.loadtxt(f'/glade/work/mingshiy/XSHIELD/tracks/TK2Y-{exp}/All_Tracks.txt')
+            TK = np.loadtxt(f'{track_dir}/TK2Y-{exp}/All_Tracks.txt')
 
             Lats = np.linspace(-89.875,89.875,720)
             Lons = np.linspace(0.125,359.875,1440)

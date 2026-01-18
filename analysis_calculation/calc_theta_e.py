@@ -23,6 +23,7 @@ from tqdm import tqdm
 from metpy.units import units
 import os
 
+# input and output dirs will be the same
 composite_dir = '/glade/work/mingshiy/XSHIELD/data/Composites'
 
 experiments = [ 'PIRE',
@@ -40,7 +41,7 @@ if calc_static_stability:
             - np.load(f'{composite_dir}/TK2Y-{exp}_thetae925.npy')
         np.save(f'{composite_dir}/TK2Y-{exp}_stability-thetae-200925.npy', sta)
 
-    quit()
+    quit() # no recalculation of theta_e if static stability can be derived successfully
 else:
     pass
 

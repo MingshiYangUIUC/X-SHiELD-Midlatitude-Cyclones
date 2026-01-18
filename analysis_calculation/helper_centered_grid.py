@@ -18,6 +18,7 @@ from scipy.interpolate import interp2d
 import great_circle_calculator.great_circle_calculator as gcc # pip install great-circle-calculator
 import time
 
+# return destination lat lon given initial point, distance traveled, and bearing angle
 def p1top2(lon1,lat1,d,brng):
     brng = np.deg2rad(brng)
     R = 6371 #Radius of the Earth
@@ -34,6 +35,7 @@ def p1top2(lon1,lat1,d,brng):
 
     return lon2,lat2
 
+# calculate bearing angle given initial and destination points
 def get_bearing(lon1,lat1,lon2,lat2):
     dLon = (lon2 - lon1)
     dLon = np.deg2rad(dLon)
@@ -46,6 +48,7 @@ def get_bearing(lon1,lat1,lon2,lat2):
 
     return brng
 
+# vectorized function to construct a storm centered grid
 def get_grid_new(center_lon,center_lat,radius,grid_dist,beering=0): # unit in km
     ncells= radius//grid_dist*2+1
     dd = np.arange(-radius,radius+1,grid_dist)
@@ -78,7 +81,7 @@ def get_grid_new(center_lon,center_lat,radius,grid_dist,beering=0): # unit in km
     #print(t01-t00,t02-t01,t03-t02)
     return gnew
 
-
+# get storm centered grid given storm center location and grid specs
 def get_centered_lonlat(center_lon,center_lat,radius,grid_dist,grid=False,mode='new',beering=0):
 
     if mode == 'old': # same as method in Stoll et al. (2021) https://doi.org/10.5194/wcd-2-19-2021
@@ -106,7 +109,7 @@ def get_centered_lonlat(center_lon,center_lat,radius,grid_dist,grid=False,mode='
     else:
         return lons,lats
 
-
+# bilinear interpolation core that calculate weighted average given data and weights
 def get_centered_data_with_weight(Data,w11,w12,w21,w22,ix1,ix2,iy1,iy2,iymax=720):
     #fill with nan if out of range
     iyM = max(np.max(iy1),np.max(iy2))
