@@ -10,8 +10,13 @@ Characteristics of Midlatitude Cyclones under Climate Change in a Global Storm-R
 
 Description:
 This script computes monthly mean fields from full time series data, with a
-primary application to 200 hPa zonal wind. The processed output is used for
-Figure 2 in the manuscript.
+primary application to 200 hPa zonal wind. 
+
+Update History:
+    2026-06-21
+        - Reduce memory usage
+        - Can configure whether calculate significance along with composite means.
+
 """
 
 import xarray as xr
@@ -24,8 +29,9 @@ import pandas as pd
 
 from tqdm import tqdm
 from scipy.stats import ttest_ind
+import gc
 
-metfield_dir = '/glade/work/mingshiy/XSHIELD/data/metfields'
+metfield_dir = '/data/keeling/a/mingshi3/c/xshield/metfields'
 
 dates_coarse = pd.date_range('2019-10-20T00','2021-01-12T00',freq='5d')
 date_str_coarse = [d.strftime('%Y%m%d%H') for d in dates_coarse]
@@ -37,6 +43,8 @@ experiments = [ 'PIRE',
                 'PIRE_CO2_1270ppmv',
                 'PIRE_PLUS_4K',
                 'PIRE_PLUS_4K_CO2_1270ppmv']
+
+calc_significance = False
 
 # process U200 needed by the manuscript (or other variables)
 var_names = ['u',]
@@ -57,8 +65,9 @@ for exp in experiments:
             #quit()
             #ds_all = xr.open_mfdataset(files)
             # Open and concat without relying on combine='by_coords'
-            datasets = [xr.open_dataset(f) for f in files]
-            ds_all = xr.concat(datasets, dim="time")
+            datasets = [xr.open_dataset(f,engine='h5netcdf') for f in files]
+            ds_all = xr.concat(datasets, dim="time").compute()
+            del datasets
 
             # Remove overlapping times across files
             time_index = pd.Index(ds_all.time.values)
@@ -77,15 +86,20 @@ for exp in experiments:
                     print(year,month,np.sum(mask))
 
                     if np.sum(mask) > 0:
-                        if exp == 'PIRE':
+                        file_out = os.path.join(f'{metfield_dir}/{exp}_monthlymean',
+                            f'{year}{str(month).zfill(2)}-{var_name}{level}_coarse.nc')
+                        if os.path.isfile(file_out) and not calc_significance:
+                            print('Skip due to existence')
+                            continue
+                        if exp == 'PIRE' or not calc_significance:
                             print('Keeping full field')
-                            ctrl.append(ds_all.sel(time=mask)['u200_coarse'].values)
+                            ctrl.append(ds_all.sel(time=mask)[f'{var_name}{level}_coarse'].values)
                             #print(ctrl[-1].shape)
                         else:
                             # compare with ctrl: t test
                             print('Calculating significance')
                             csim = ctrl[i_mon]
-                            sim = ds_all.sel(time=mask)['u200_coarse'].values
+                            sim = ds_all.sel(time=mask)[f'{var_name}{level}_coarse'].values
                             Y = csim.shape[-2]
                             X = csim.shape[-1]
 
@@ -105,9 +119,10 @@ for exp in experiments:
                         print('Process monthly mean field')
                         ds_month = ds_all.sel(time=mask).mean(dim='time')
                         #ds_month['time'].encoding['dtype'] = 'float64'
-                        ds_month.to_netcdf(os.path.join(f'{metfield_dir}/{exp}_monthlymean',
-                            f'{year}{str(month).zfill(2)}-{var_name}{level}_coarse.nc'))
+                        ds_month.to_netcdf(file_out)
 
                         del mask, ds_month
 
                         i_mon += 1
+            del ds_all
+            gc.collect()

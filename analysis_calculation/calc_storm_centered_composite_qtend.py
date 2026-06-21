@@ -3,20 +3,13 @@ Author:
 Mingshi Yang (mingshi3@illinois.edu)
 
 Date:
-2026-01-16
+2026-06-21
 
 Project:
 Characteristics of Midlatitude Cyclones under Climate Change in a Global Storm-Resolving Model
 
 Description:
-This script constructs storm-centered composite datasets by interpolating model lat-
-lon fields onto a storm-centric grid using horizontal bilinear interpolation. The
-storm-centered compositing framework is adapted from Stoll et al. (2021,
-https://doi.org/10.5194/wcd-2-19-2021).
-
-Update History:
-    2026-06-21
-        - Reduce memory usage by improving data loading
+Calculate composites q tendency by loading temporally shifted specific humidity files.
 
 """
 
@@ -106,8 +99,9 @@ def find_filedate(exp,var_name,level,d_str): # return date of the correct file
 # multiprocessing worker (process a segment of full list)
 def worker_func(ilist):
 
-    result_chunk = []
-    for i in ilist:
+    result_chunk = np.empty((len(ilist), 201, 201), dtype=np.float32)
+
+    for j, i in enumerate(ilist):
         # get storm center
         center_lat = Lats[np.argmin((Lats-TK[i][1])**2)]
         center_lon = Lons[np.argmin((Lons-TK[i][2]%360)**2)]
@@ -118,8 +112,28 @@ def worker_func(ilist):
 
         timestep = str(np.int64(TK[i][0]))
 
+        t0 = pd.Timestamp(
+            f'{timestep[0:4]}-{timestep[4:6]}-{timestep[6:8]}T{timestep[8:10]}'
+        )
+
+        t_prev = t0 - pd.Timedelta(hours=Hstep)
+        t_next = t0 + pd.Timedelta(hours=Hstep)
+
         # only select and use latitude range needed to speedup
-        var_itp = var.sel(time=f'{timestep[0:4]}-{timestep[4:6]}-{timestep[6:8]}T{timestep[8:10]}',grid_yt_coarse=slice(latmin,latmax)).values[0,::-1] # y top down
+        var_prev = var.sel(
+            time=t_prev,
+            grid_yt_coarse=slice(latmin, latmax)
+        ).values[::-1]
+
+        var_next = var.sel(
+            time=t_next,
+            grid_yt_coarse=slice(latmin, latmax)
+        ).values[::-1]
+
+        # centered finite difference: dq/dt
+        # units: q units per second
+        var_itp = (var_next - var_prev) / (Hstep*2 * 3600)
+
         latshift = np.int16((89.875-latmax)/0.25)
         w11,w12,w21,w22,ix1,ix2,iy1,iy2 = get_weight_idx_from_grid_bi_evengrid025(grid)
         iy1 -= latshift
@@ -134,10 +148,11 @@ def worker_func(ilist):
 
         percentage = int(round((i-ilist[0])*100/len(ilist)))
         print('-'*percentage+'_'*(100-percentage)+f' {round(mem.available/1024**3,2)}G     ',end='\r')
-        result_chunk.append(var_out)
+        result_chunk[j] = var_out
     #print(len(result_chunk))
     return result_chunk
 
+Hstep = 3
 
 if __name__ == "__main__":
     print(cpu_count())
@@ -147,16 +162,16 @@ if __name__ == "__main__":
  
         # define levels and variables that need processing
         levels = ['1000','925','850','700','500','200','50']
-        var_names = ['q','t','omg']
+        var_names = ['q']
 
         varlev = [(i,j) for i in var_names for j in levels]
         print(varlev)
 
         for var_name, level in varlev:
-
+            var_name_out = 'd' + var_name + 'dt'
             print(exp, var_name, level)
 
-            if os.path.isfile(os.path.join(composite_dir,f'TK2Y-{exp}_{var_name}{level}.npy')):
+            if os.path.isfile(os.path.join(composite_dir,f'TK2Y-{exp}_{var_name_out}{level}.npy')):
                 print('Destination file exists.')
                 continue
             
@@ -167,11 +182,7 @@ if __name__ == "__main__":
             Lons = np.linspace(0.125,359.875,1440)
 
             # open all dataset
-            var_ds = [os.path.join(f'{metfield_dir}/{exp}',f) for f in os.listdir(f'{metfield_dir}/{exp}') if f'-{var_name}{level}_' in f]
-            var_ds.sort()
-
-            datasets = [xr.open_dataset(f,engine='h5netcdf') for f in var_ds]
-            ds_all = xr.concat(datasets, dim="time")
+            ds_all = xr.open_dataset(os.path.join(f'{metfield_dir}',f'{exp}',f'{exp}-merged-{var_name}{level}.nc'),engine='h5netcdf')
 
             # Remove overlapping times across files
             time_index = pd.Index(ds_all.time.values)
@@ -180,18 +191,21 @@ if __name__ == "__main__":
 
             var = ds_all[f'{var_name}{level}_coarse']
 
+            #data_field = np.zeros((len(TK),201,201),dtype=np.float32)
+            #print(data_field.nbytes/1024**3)
+
             # parallel processing with multiprocessing pool
             full_ilist = np.arange(len(TK))
             
-            nproc = 32
+            nproc = 48
             chunk = np.int64(np.round(np.linspace(0,len(TK),nproc+1),0))
             with Pool(processes=min(nproc,cpu_count())) as pool:  # Adjust the number of processes as appropriate
                 results = pool.map(worker_func, [np.arange(chunk[i],chunk[i+1]) for i in range(nproc)])
-            
+            print('Concatenating')
             data_field = np.concatenate(results, axis=0).astype(np.float32)
             print('Saving')
 
-            np.save(os.path.join(composite_dir,f'TK2Y-{exp}_{var_name}{level}.npy'),data_field)
+            np.save(os.path.join(composite_dir,f'TK2Y-{exp}_{var_name_out}{level}.npy'),data_field)
 
             del data_field, results, var, TK, ds_all
             gc.collect()

@@ -14,6 +14,12 @@ and applies statistical significance testing (such as t-test) between
 sensitivity experiments and the control (CTRL). The workflow is applied
 systematically across all experiments, user-specified variables, and vertical
 levels defined by the user.
+
+Update History:
+    2026-06-21
+        - Added basin-based composite calculation using longitude-defined basins.
+        - Added on-the-fly horizontal-gradient calculation.
+
 """
 
 import numpy as np
@@ -25,9 +31,9 @@ from scipy.stats import ttest_ind, mannwhitneyu # or other tests
 
 # input and output directory
 # must check these paths when reproducing composite analysis
-composite_dir = '/glade/work/mingshiy/XSHIELD/data/Composites'
-composite_derived_dir = '/glade/work/mingshiy/XSHIELD/data/Composites_derived'
-track_dir = '/glade/work/mingshiy/XSHIELD/tracks'
+composite_dir = '/data/keeling/a/mingshi3/c/xshield/composites'
+composite_derived_dir = '/data/keeling/a/mingshi3/c/xshield/Midlatitude-Cyclone-in-X-SHiELD/data/composites'
+track_dir = '/data/keeling/a/mingshi3/c/xshield/Midlatitude-Cyclone-in-X-SHiELD/data/tracks'
 
 experiments = [ 'PIRE',
                 'PIRE_CO2_1270ppmv',
@@ -40,9 +46,14 @@ var_name = 'stability-thetae-200925'
 var_name = 'uv925'
 levels = ['']
 
+calc_gradient=False
+
 # (b) or regular definition: variable names and levels, 
 #var_name = 'rh'
 #levels = [1000,925,850,700,500,200,50]
+
+# Basin. '', 'NP', or 'NA': all, north pacific, north atlantic, it is just longitude subset
+basin = ''  
 
 # import and define statistical test function
 test = ttest_ind
@@ -55,6 +66,36 @@ for exp in experiments: # load track and indices
 
 Y, X = 201,201 # horizontal storm centered grid
 
+  
+
+def get_lon_slice(basin):
+    if basin == '':
+        return None
+    elif basin == 'NP':
+        return (120, 240)
+    elif basin == 'NA':
+        return (280, 360)
+    else:
+        raise ValueError(f'Unknown basin: {basin}')
+
+def select_tracks(d, basin=''):
+    lon = d[:, 2] % 360
+    lon_slice = get_lon_slice(basin)
+
+    sel = (
+        (d[:, 0] > 2020000000) &
+        (d[:, 0] < 2022000000) &
+        (d[:, 1] < 65) &
+        (d[:, 1] >= 30)
+    )
+
+    if lon_slice is not None:
+        lon0, lon1 = lon_slice
+        sel = sel & (lon >= lon0) & (lon < lon1)
+
+    return np.array(sel)
+
+
 for level in levels:
 
     mean_data = [] # 4 exps, Y, X
@@ -66,15 +107,21 @@ for level in levels:
         if i == 0:
             # CTRL experiment data: only create composite mean
             d = tk[i]
-            sel0 = np.array((d[:,0]>2020000000)&(d[:,0]<2022000000)&(d[:,1]<65)&(d[:,1]>=30)) # subset, because all track include full simulation period and other latitudes
+            sel0 = select_tracks(d, basin=basin)
+
             data_ctrl = np.load(f'{composite_dir}/TK2Y-{exp}_{var_name}{level}.npy')[sel0].astype(np.float32)
             print(data_ctrl.shape)
+            if calc_gradient:
+                data_ctrl = np.sqrt(np.gradient(data_ctrl,axis=-1)**2 + np.gradient(data_ctrl,axis=-2)**2) / 25000
             mean_data.append(np.nanmean(data_ctrl,axis=0))
         else:
             # sensitivity experiments: get composite mean and conduct statistical test with CTRL and get p value
             d = tk[i]
-            sel = np.array((d[:,0]>2020000000)&(d[:,0]<2022000000)&(d[:,1]<65)&(d[:,1]>=30))
+            sel = select_tracks(d, basin=basin)
+
             data_test = np.load(f'{composite_dir}/TK2Y-{exp}_{var_name}{level}.npy')[sel].astype(np.float32)
+            if calc_gradient:
+                data_test = np.sqrt(np.gradient(data_test,axis=-1)**2 + np.gradient(data_test,axis=-2)**2) / 25000
             mean_data.append(np.nanmean(data_test,axis=0))
             
             # loop over grid for stat test
@@ -91,6 +138,9 @@ for level in levels:
             p_data.append(p_values)
             del data_test
     del data_ctrl
-
-    np.save(f'{composite_derived_dir}/TK2Y-allexp_means_{var_name}{level}_t.npy',np.array(mean_data))
-    np.save(f'{composite_derived_dir}/TK2Y-allexp-ctrl_pvalue_{var_name}{level}_t.npy',np.array(p_data))
+    if calc_gradient:
+        np.save(f'{composite_derived_dir}/TK2Y-allexp_means_{basin}{var_name}G{level}_t.npy',np.array(mean_data))
+        np.save(f'{composite_derived_dir}/TK2Y-allexp-ctrl_pvalue_{basin}{var_name}G{level}_t.npy',np.array(p_data))
+    else:
+        np.save(f'{composite_derived_dir}/TK2Y-allexp_means_{basin}{var_name}{level}_t.npy',np.array(mean_data))
+        np.save(f'{composite_derived_dir}/TK2Y-allexp-ctrl_pvalue_{basin}{var_name}{level}_t.npy',np.array(p_data))

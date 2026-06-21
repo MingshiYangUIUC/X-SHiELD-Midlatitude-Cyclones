@@ -10,7 +10,14 @@ Characteristics of Midlatitude Cyclones under Climate Change in a Global Storm-R
 
 Description:
 This script vertically integrates specific humidity (q) to compute column
-water vapor. The resulting fields are used in Figure 5 of the manuscript.
+water vapor.
+
+Update History:
+    2026-06-21
+        - Added configurable upper and lower boundaries of vertical integration.
+        - Added support to integrate q tendency to get column water tendency.
+        - Improve speed by using more efficient memory maps.
+
 """
 
 import numpy as np
@@ -20,41 +27,70 @@ import os
 import gc
 
 # input and output dirs will be the same
-composite_dir = '/glade/work/mingshiy/XSHIELD/data/Composites'
+composite_dir = '/data/keeling/a/mingshi3/c/xshield/composites'
 
 experiments = [ 'PIRE',
                 'PIRE_CO2_1270ppmv',
                 'PIRE_PLUS_4K',
                 'PIRE_PLUS_4K_CO2_1270ppmv']
 
-var_name = 'q'
+var_name = 'dqdt'
         
 levels = ['1000','925','850','700','500','200','50'] # in hPa
+
+lower_bound = '925'
+upper_bound = '200'
+
+# select levels within bound
+ilevel0 = levels.index(lower_bound)
+ilevel1 = levels.index(upper_bound)
+levels = levels[ilevel0:ilevel1+1]
+
+print('Using levels', levels)
+
+
 plevels = np.array([float(l)*100 for l in levels]) # in Pa
 
 for exp in experiments:
 
     print(exp)
-    if os.path.isfile(f'{composite_dir}/TK2Y-{exp}_cwv.npy'):
+
+    if var_name == 'q':
+        file_out = f'{composite_dir}/TK2Y-{exp}_cwv_{lower_bound}-{upper_bound}.npy'
+    else:
+        file_out = f'{composite_dir}/TK2Y-{exp}_c{var_name}_{lower_bound}-{upper_bound}.npy'
+
+    if os.path.isfile(file_out):
         print('exist')
         continue
-    qdata = np.stack([np.load(f'{composite_dir}/TK2Y-{exp}_q{lvl}.npy').astype(np.float32) for lvl in levels]).astype(np.float32)
-    print(qdata.shape)
 
-    qout = np.zeros(qdata.shape[1:]).astype(np.float32)
-    print(qout.shape)
+    # open level files as read-only memmaps
+    qfiles = [
+        np.load(
+            f'{composite_dir}/TK2Y-{exp}_{var_name}{lvl}.npy',
+            mmap_mode='r'
+        )
+        for lvl in levels
+    ]
 
-    pp = (np.zeros((7,qout.shape[0])) + plevels[:,None]).astype(np.float32)
+    nt, ny, nx = qfiles[0].shape
+    print((len(qfiles), nt, ny, nx))
 
-    for i in tqdm(range(201)):
-        for j in range(201):
-            q = qdata[:,:,i,j]
-            #print(q.shape,plevels.shape)
-            #print(q)
-            qout[:,i,j] = - np.trapz(q, pp, axis=0) / 9.81
-            #print(q,pp[:,0],qout[:,i,j], np.nanmean(qout[:,i,j]))
-            #quit()
-    
-    np.save(f'{composite_dir}/TK2Y-{exp}_cwv.npy',qout)
-    del qdata, qout
+    # keep output in RAM
+    qout = np.empty((nt, ny, nx), dtype=np.float32)
+
+    pp = plevels.astype(np.float32)
+
+    for i in tqdm(range(nt)):
+        # shape: nlevel, ny, nx
+        q_slice = np.stack([
+            qf[i, :, :]
+            for qf in qfiles
+        ], axis=0).astype(np.float32)
+
+        qout[i, :, :] = -np.trapz(q_slice, pp[:, None, None], axis=0) / 9.81
+
+    np.save(file_out, qout)
+
+    del qfiles, qout
     gc.collect()
