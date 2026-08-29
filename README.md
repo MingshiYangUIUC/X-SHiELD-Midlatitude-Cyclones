@@ -38,7 +38,7 @@ The analysis primarily relies on the following Python packages:
 
 ## Notes
 
-This repository is intended for data and software availability in support of open and reproducible research. Detailed scientific background, methodological discussion, and figure interpretation are provided in the publishment.
+This repository is intended for data and software availability in support of open and reproducible research. Detailed scientific background, methodological discussion, and figure interpretation are provided in the manuscript.
 
 Computing support was provided by NCAR Computational and Information Systems Laboratory (CISL):  
 https://www.cisl.ucar.edu/
